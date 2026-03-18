@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced AI Vision Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.0.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.1"></script>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <style>
+        .animate-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .listening { background: linear-gradient(45deg, #ef4444, #f87171) !important; animation: pulse 1s infinite; }
+        .speaking { animation: pulse 1.5s infinite; }
+        .processing { opacity: 0.6; pointer-events: none; }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-4">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-6">
+            <h1 class="text-5xl font-bold text-white mb-2">🤖 Advanced Vision Assistant</h1>
+            <p class="text-blue-200 text-xl">Object Detection • Scene Description • OCR Text Reading • Distance Estimation</p>
+        </header>
+
+        <!-- Status Bar -->
+        <div class="bg-white bg-opacity-20 backdrop-blur-xl rounded-xl p-4 mb-6 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex gap-4">
+                <div class="flex items-center gap-2">
+                    <div id="cameraStatus" class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span class="text-white text-sm font-semibold">Camera: <span id="cameraStatusText">Off</span></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="aiStatus" class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span class="text-white text-sm font-semibold">AI: <span id="aiStatusText">Loading...</span></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="ocrStatus" class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span class="text-white text-sm font-semibold">OCR: <span id="ocrStatusText">Loading...</span></span>
+                </div>
+            </div>
+            <button onclick="startListening()" id="mainVoiceBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2">
+                🎤 Hold to Speak
+            </button>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid lg:grid-cols-2 gap-6 mb-6">
+            <!-- Camera Feed -->
+            <div class="bg-white bg-opacity-10 backdrop-blur-xl rounded-2xl p-6">
+                <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                    📹 Live Camera Feed
+                    <span id="liveTag" class="hidden text-xs bg-green-500 px-2 py-1 rounded-full animate-pulse">LIVE</span>
+                </h2>
+                
+                <div class="relative aspect-video bg-black rounded-xl overflow-hidden mb-4">
+                    <video id="videoElement" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                    <canvas id="overlayCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+                    
+                    <div id="videoPlaceholder" class="absolute inset-0 flex items-center justify-center bg-gray-900">
+                        <div class="text-center text-gray-400">
+                            <p class="text-xl mb-2">📷 Camera Not Started</p>
+                            <p class="text-sm">Click "Start Vision" below</p>
+                        </div>
+                    </div>
+
+                    <!-- Processing Overlay -->
+                    <div id="processingOverlay" class="hidden absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
+                        <div class="text-center text-white">
+                            <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                            <p id="processingText" class="text-lg font-semibold">Processing...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <button onclick="toggleCamera()" id="cameraBtn" class="bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold">
+                        ▶️ Start Vision
+                    </button>
+                    <button onclick="describeNow()" id="describeBtn" disabled class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold">
+                        👁️ Describe Scene
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="captureAndDescribe()" id="captureBtn" disabled class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold">
+                        📸 AI Description
+                    </button>
+                    <button onclick="readText()" id="ocrBtn" disabled class="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold">
+                        📄 Read Text (OCR)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Voice Interaction -->
+            <div class="bg-white bg-opacity-10 backdrop-blur-xl rounded-2xl p-6">
+                <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                    💬 Voice Conversation
+                    <span id="speakingTag" class="hidden text-xs bg-blue-500 px-2 py-1 rounded-full speaking">SPEAKING</span>
+                </h2>
+
+                <!-- What You Said -->
+                <div class="bg-blue-900 bg-opacity-40 rounded-lg p-4 mb-4 min-h-[80px]">
+                    <p class="text-blue-300 text-sm font-semibold mb-1">You:</p>
+                    <p id="userSpeech" class="text-white text-lg">Say something...</p>
+                </div>
+
+                <!-- AI Response -->
+                <div class="bg-purple-900 bg-opacity-40 rounded-lg p-4 mb-4 min-h-[120px]">
+                    <p class="text-purple-300 text-sm font-semibold mb-1">AI Assistant:</p>
+                    <p id="aiResponse" class="text-white text-lg">I'm ready to help you see!</p>
+                </div>
+
+                <!-- Voice Commands Help -->
+                <div class="bg-white bg-opacity-10 rounded-lg p-4">
+                    <p class="text-white font-semibold mb-2">Voice Commands:</p>
+                    <div class="text-sm text-blue-200 space-y-1">
+                        <p>• "What do you see?" - Object detection + distance</p>
+                        <p>• "Describe the scene" - AI scene description</p>
+                        <p>• "Read the text" - OCR text reading</p>
+                        <p>• "How many people?" - Count objects</p>
+                        <p>• "Is there a [object]?" - Find items</p>
+                        <p>• "How far is the [object]?" - Distance info</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Detection Display -->
+        <div class="bg-white bg-opacity-10 backdrop-blur-xl rounded-2xl p-6 mb-6">
+            <h2 class="text-2xl font-bold text-white mb-4">🎯 Currently Detecting</h2>
+            <div id="detectionDisplay" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-gray-700 bg-opacity-50 rounded-lg p-4 text-center text-gray-400">
+                    <p>No objects detected yet</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Conversation History -->
+        <div class="bg-white bg-opacity-10 backdrop-blur-xl rounded-2xl p-6">
+            <h2 class="text-2xl font-bold text-white mb-4">📜 Conversation History</h2>
+            <div id="historyDisplay" class="space-y-2 max-h-64 overflow-y-auto">
+                <p class="text-gray-400 text-center py-4">Your conversation will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== GLOBAL STATE ==========
+        let model = null;
+        let stream = null;
+        let cameraActive = false;
+        let detectionLoop = null;
+        let currentDetections = [];
+        let recognition = null;
+        let isListening = false;
+        let isSpeaking = false;
+        let isProcessing = false;
+        let tesseractWorker = null;
+
+        // Distance estimation constants (matching Python code)
+        const KNOWN_WIDTH = 0.5;  // average object width in meters
+        const FOCAL_LENGTH = 615;  // calibrated focal length
+
+        // ========== INITIALIZATION ==========
+        window.onload = async () => {
+            updateStatus('aiStatus', 'yellow', 'AI: Loading...');
+            updateStatus('ocrStatus', 'yellow', 'OCR: Loading...');
+            
+            try {
+                // Load object detection model (COCO-SSD similar to YOLOv5)
+                model = await cocoSsd.load();
+                updateStatus('aiStatus', 'green', 'AI: Ready');
+                
+                // Initialize Tesseract OCR
+                tesseractWorker = await Tesseract.createWorker('eng');
+                updateStatus('ocrStatus', 'green', 'OCR: Ready');
+                
+                speak("Hello! I am your advanced vision assistant. I can detect objects with distance estimation, describe scenes with AI, and read text. Say 'start camera' to begin!");
+            } catch (error) {
+                updateStatus('aiStatus', 'red', 'AI: Error');
+                updateStatus('ocrStatus', 'red', 'OCR: Error');
+                console.error('Initialization error:', error);
+                speak("I had trouble loading. Some features may not work.");
+            }
+        };
+
+        // ========== DISTANCE ESTIMATION (from Python) ==========
+        function estimateDistance(pixelWidth) {
+            if (pixelWidth === 0) return null;
+            const distance = (KNOWN_WIDTH * FOCAL_LENGTH) / pixelWidth;
+            return distance;
+        }
+
+        function estimateSceneDistance() {
+            if (currentDetections.length === 0) return "";
+            
+            const detections = currentDetections.map(d => {
+                const width = d.bbox[2]; // bbox width
+                const distance = estimateDistance(width);
+                return { class: d.class, distance };
+            }).filter(d => d.distance && d.distance > 0 && d.distance < 10);
+
+            if (detections.length === 0) return "";
+
+            const closest = detections.sort((a, b) => a.distance - b.distance)[0];
+            return `The ${closest.class} appears to be approximately ${closest.distance.toFixed(1)} meters away.`;
+        }
+
+        // ========== CAMERA CONTROL ==========
+        async function toggleCamera() {
+            if (cameraActive) {
+                stopCamera();
+            } else {
+                await startCamera();
+            }
+        }
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: 640, height: 480 },
+                    audio: false
+                });
+
+                const video = document.getElementById('videoElement');
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    cameraActive = true;
+                    document.getElementById('videoPlaceholder').classList.add('hidden');
+                    document.getElementById('liveTag').classList.remove('hidden');
+                    document.getElementById('cameraBtn').innerHTML = '⏹️ Stop Vision';
+                    document.getElementById('cameraBtn').className = 'bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold';
+                    document.getElementById('describeBtn').disabled = false;
+                    document.getElementById('captureBtn').disabled = false;
+                    document.getElementById('ocrBtn').disabled = false;
+                    updateStatus('cameraStatus', 'green', 'Camera: Active');
+                    
+                    startDetectionLoop();
+                    speak("Camera activated. I can now see your surroundings with distance estimation. Ask me anything!");
+                };
+            } catch (error) {
+                speak("I couldn't access the camera. Please allow camera permissions.");
+                console.error('Camera error:', error);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            if (detectionLoop) {
+                clearInterval(detectionLoop);
+                detectionLoop = null;
+            }
+            
+            cameraActive = false;
+            currentDetections = [];
+            
+            document.getElementById('videoElement').srcObject = null;
+            document.getElementById('videoPlaceholder').classList.remove('hidden');
+            document.getElementById('liveTag').classList.add('hidden');
+            document.getElementById('cameraBtn').innerHTML = '▶️ Start Vision';
+            document.getElementById('cameraBtn').className = 'bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold';
+            document.getElementById('describeBtn').disabled = true;
+            document.getElementById('captureBtn').disabled = true;
+            document.getElementById('ocrBtn').disabled = true;
+            updateStatus('cameraStatus', 'red', 'Camera: Off');
+            
+            const canvas = document.getElementById('overlayCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            speak("Camera stopped.");
+        }
+
+        // ========== REAL-TIME DETECTION ==========
+        function startDetectionLoop() {
+            detectionLoop = setInterval(async () => {
+                if (!cameraActive || !model || isProcessing) return;
+                
+                const video = document.getElementById('videoElement');
+                if (video.readyState !== 4) return;
+
+                try {
+                    const predictions = await model.detect(video);
+                    currentDetections = predictions.filter(p => p.score > 0.5);
+                    
+                    updateDetectionDisplay(currentDetections);
+                    drawBoundingBoxes(video, currentDetections);
+                } catch (error) {
+                    console.error('Detection error:', error);
+                }
+            }, 1500);
+        }
+
+        function updateDetectionDisplay(detections) {
+            const display = document.getElementById('detectionDisplay');
+            
+            if (detections.length === 0) {
+                display.innerHTML = '<div class="col-span-full bg-gray-700 bg-opacity-50 rounded-lg p-4 text-center text-gray-400"><p>No clear objects detected</p></div>';
+                return;
+            }
+
+            const counts = {};
+            const distances = {};
+            
+            detections.forEach(d => {
+                counts[d.class] = (counts[d.class] || 0) + 1;
+                const dist = estimateDistance(d.bbox[2]);
+                if (dist && dist < 10) {
+                    distances[d.class] = Math.min(distances[d.class] || Infinity, dist);
+                }
+            });
+
+            display.innerHTML = '';
+            Object.entries(counts).slice(0, 8).forEach(([label, count]) => {
+                const div = document.createElement('div');
+                div.className = 'bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg p-4 text-center transform hover:scale-105 transition-all';
+                
+                let distanceText = '';
+                if (distances[label]) {
+                    distanceText = `<p class="text-blue-100 text-xs mt-1">~${distances[label].toFixed(1)}m away</p>`;
+                }
+                
+                div.innerHTML = `
+                    <p class="text-2xl mb-1">${getEmoji(label)}</p>
+                    <p class="text-white font-bold capitalize">${label}</p>
+                    <p class="text-blue-200 text-sm">${count > 1 ? count + ' detected' : 'Detected'}</p>
+                    ${distanceText}
+                `;
+                display.appendChild(div);
+            });
+        }
+
+        function drawBoundingBoxes(video, predictions) {
+            const canvas = document.getElementById('overlayCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            predictions.forEach(pred => {
+                const [x, y, width, height] = pred.bbox;
+                const distance = estimateDistance(width);
+                
+                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, width, height);
+                
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.9)';
+                ctx.fillRect(x, y - 30, 200, 30);
+                
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                
+                let label = `${pred.class} ${(pred.score * 100).toFixed(0)}%`;
+                if (distance && distance < 10) {
+                    label += ` | ${distance.toFixed(1)}m`;
+                }
+                
+                ctx.fillText(label, x + 5, y - 8);
+            });
+        }
+
+        // ========== AI SCENE DESCRIPTION (from Python scene_description.py) ==========
+        async function captureAndDescribe() {
+            if (!cameraActive) {
+                speak("Please start the camera first.");
+                return;
+            }
+
+            if (isProcessing) {
+                speak("Please wait, I'm still processing.");
+                return;
+            }
+
+            isProcessing = true;
+            showProcessing("Analyzing scene with advanced AI...");
+
+            try {
+                const video = document.getElementById('videoElement');
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                // Convert canvas to blob for API
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+
+                // Try multiple AI models for best description
+                let description = null;
+                
+                // Try BLIP-2 for more detailed descriptions
+                try {
+                    const blip2Response = await fetch('https://api-inference.huggingface.co/models/Salesforce/blip2-opt-2.7b', {
+                        method: 'POST',
+                        body: blob,
+                    });
+                    
+                    if (blip2Response.ok) {
+                        const result = await blip2Response.json();
+                        if (result && result[0] && result[0].generated_text) {
+                            description = result[0].generated_text;
+                        }
+                    }
+                } catch (e) {
+                    console.log('BLIP-2 unavailable, trying BLIP-large');
+                }
+
+                // Fallback to BLIP-large
+                if (!description) {
+                    const blipResponse = await fetch('https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large', {
+                        method: 'POST',
+                        body: blob,
+                    });
+
+                    if (blipResponse.ok) {
+                        const result = await blipResponse.json();
+                        if (result && result[0] && result[0].generated_text) {
+                            description = result[0].generated_text;
+                        }
+                    }
+                }
+
+                if (description) {
+                    // Enhance the description with context and details
+                    const enhancedDesc = enhanceAIDescription(description);
+                    const distanceInfo = estimateSceneDistance();
+                    
+                    let fullResponse = `Let me describe what I see: ${enhancedDesc}`;
+                    if (distanceInfo) {
+                        fullResponse += ` ${distanceInfo}`;
+                    }
+                    
+                    // Add detected object details
+                    const objectDetails = getDetailedObjectInfo();
+                    if (objectDetails) {
+                        fullResponse += ` ${objectDetails}`;
+                    }
+                    
+                    speak(fullResponse);
+                    addToHistory('AI Scene Description', fullResponse);
+                } else {
+                    throw new Error('No description generated');
+                }
+            } catch (error) {
+                console.error('Scene description error:', error);
+                // Fallback to enhanced description with detailed context
+                const fallback = generateDetailedDescription();
+                speak(fallback);
+                addToHistory('AI Scene Description', fallback);
+            } finally {
+                isProcessing = false;
+                hideProcessing();
+            }
+        }
+
+        // Enhance AI description with more natural language
+        function enhanceAIDescription(rawDesc) {
+            // Make the description more conversational and detailed
+            let enhanced = rawDesc;
+            
+            // Add context based on detected objects
+            const objectTypes = [...new Set(currentDetections.map(d => d.class))];
+            
+            // Check for activities
+            if (objectTypes.includes('person')) {
+                const hasLaptop = objectTypes.includes('laptop');
+                const hasPhone = objectTypes.includes('cell phone');
+                const hasBook = objectTypes.includes('book');
+                const hasFood = objectTypes.some(t => ['banana', 'apple', 'orange', 'sandwich', 'pizza', 'bowl', 'cup'].includes(t));
+                
+                if (hasLaptop && enhanced.includes('person')) {
+                    enhanced = enhanced.replace(/person/i, 'person who appears to be working on a laptop');
+                } else if (hasPhone && enhanced.includes('person')) {
+                    enhanced = enhanced.replace(/person/i, 'person using a cell phone');
+                } else if (hasBook && enhanced.includes('person')) {
+                    enhanced = enhanced.replace(/person/i, 'person reading a book');
+                } else if (hasFood && enhanced.includes('person')) {
+                    enhanced = enhanced.replace(/person/i, 'person who appears to be eating or having a meal');
+                }
+            }
+            
+            return enhanced;
+        }
+
+        // Get detailed information about detected objects
+        function getDetailedObjectInfo() {
+            if (currentDetections.length === 0) return '';
+            
+            const counts = {};
+            currentDetections.forEach(d => {
+                counts[d.class] = (counts[d.class] || 0) + 1;
+            });
+            
+            const items = Object.entries(counts)
+                .filter(([obj]) => !['person'].includes(obj)) // Exclude person as it's in main description
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 4);
+            
+            if (items.length === 0) return '';
+            
+            const itemList = items.map(([obj, count]) => 
+                count > 1 ? `${count} ${obj}s` : `a ${obj}`
+            ).join(', ');
+            
+            return `I can also detect ${itemList} in the scene.`;
+        }
+
+        function generateDetailedDescription() {
+            if (currentDetections.length === 0) {
+                return "I cannot see any clear objects in the current view. The scene appears unclear. Please try improving the lighting, adjusting the camera position, or moving closer to the subject for a better view.";
+            }
+
+            const counts = {};
+            const distances = {};
+            const positions = {}; // track object positions
+            
+            currentDetections.forEach(d => {
+                counts[d.class] = (counts[d.class] || 0) + 1;
+                const dist = estimateDistance(d.bbox[2]);
+                if (dist && dist < 10) {
+                    distances[d.class] = Math.min(distances[d.class] || Infinity, dist);
+                }
+                
+                // Determine position in frame (left, center, right)
+                const centerX = d.bbox[0] + d.bbox[2] / 2;
+                const video = document.getElementById('videoElement');
+                const frameWidth = video.videoWidth;
+                if (centerX < frameWidth / 3) {
+                    positions[d.class] = 'on the left side';
+                } else if (centerX > (2 * frameWidth) / 3) {
+                    positions[d.class] = 'on the right side';
+                } else {
+                    positions[d.class] = 'in the center';
+                }
+            });
+
+            let description = "Let me describe what I see in detail: ";
+
+            // Describe people first with activities
+            const personCount = counts['person'] || 0;
+            if (personCount > 0) {
+                if (personCount === 1) {
+                    description += `There is one person ${positions['person'] || 'in the scene'}`;
+                    if (distances['person']) {
+                        description += `, approximately ${distances['person'].toFixed(1)} meters away from the camera`;
+                    }
+                    
+                    // Infer activity from other objects
+                    const activities = inferActivity(counts);
+                    if (activities.length > 0) {
+                        description += `. The person appears to be ${activities.join(' and ')}`;
+                    }
+                } else {
+                    description += `There are ${personCount} people in the scene`;
+                    if (distances['person']) {
+                        description += `, with the closest one about ${distances['person'].toFixed(1)} meters away`;
+                    }
+                }
+                description += '. ';
+            }
+
+            // Describe furniture and setting
+            const furniture = ['chair', 'couch', 'bed', 'table', 'desk'].filter(f => counts[f]);
+            if (furniture.length > 0) {
+                const furnitureDesc = furniture.map(f => {
+                    const count = counts[f];
+                    return count > 1 ? `${count} ${f}s` : `a ${f}`;
+                }).join(', ');
+                description += `The setting includes ${furnitureDesc}. `;
+            }
+
+            // Describe electronics
+            const electronics = ['laptop', 'cell phone', 'tv', 'keyboard', 'mouse', 'remote'].filter(e => counts[e]);
+            if (electronics.length > 0) {
+                const electronicsDesc = electronics.map(e => {
+                    const count = counts[e];
+                    let desc = count > 1 ? `${count} ${e}s` : `a ${e}`;
+                    if (positions[e]) {
+                        desc += ` ${positions[e]}`;
+                    }
+                    return desc;
+                }).join(', ');
+                description += `I can see ${electronicsDesc}. `;
+            }
+
+            // Describe food items
+            const food = ['banana', 'apple', 'orange', 'sandwich', 'pizza', 'cake', 'donut', 'bowl', 'cup', 'bottle'].filter(f => counts[f]);
+            if (food.length > 0) {
+                const foodDesc = food.map(f => {
+                    const count = counts[f];
+                    return count > 1 ? `${count} ${f}s` : `a ${f}`;
+                }).join(', ');
+                description += `There is ${foodDesc} present, suggesting a meal or snack time. `;
+            }
+
+            // Describe other objects
+            const other = Object.keys(counts).filter(obj => 
+                !['person', 'chair', 'couch', 'bed', 'table', 'desk', 'laptop', 'cell phone', 'tv', 'keyboard', 'mouse', 'remote', 
+                  'banana', 'apple', 'orange', 'sandwich', 'pizza', 'cake', 'donut', 'bowl', 'cup', 'bottle'].includes(obj)
+            );
+            
+            if (other.length > 0) {
+                const otherDesc = other.slice(0, 3).map(o => {
+                    const count = counts[o];
+                    return count > 1 ? `${count} ${o}s` : `a ${o}`;
+                }).join(', ');
+                description += `Additionally, I detect ${otherDesc}. `;
+            }
+
+            // Add overall scene interpretation
+            const sceneType = interpretScene(counts);
+            if (sceneType) {
+                description += sceneType;
+            }
+
+            return description.trim();
+        }
+
+        function inferActivity(counts) {
+            const activities = [];
+            
+            if (counts['laptop'] || counts['keyboard']) {
+                activities.push('working on a computer');
+            }
+            if (counts['cell phone']) {
+                activities.push('using a mobile phone');
+            }
+            if (counts['book']) {
+                activities.push('reading');
+            }
+            if (counts['cup'] || counts['bottle']) {
+                activities.push('having a drink');
+            }
+            const hasFood = ['banana', 'apple', 'orange', 'sandwich', 'pizza', 'bowl'].some(f => counts[f]);
+            if (hasFood) {
+                activities.push('eating');
+            }
+            if (counts['tv']) {
+                activities.push('watching television');
+            }
+            if (counts['couch'] && !activities.length) {
+                activities.push('sitting or relaxing');
+            }
+            
+            return activities;
+        }
+
+        function interpretScene(counts) {
+            const hasLaptop = counts['laptop'];
+            const hasDesk = counts['desk'] || counts['table'];
+            const hasCouch = counts['couch'];
+            const hasBed = counts['bed'];
+            const hasTV = counts['tv'];
+            const hasFood = ['bowl', 'cup', 'fork', 'spoon', 'knife'].some(f => counts[f]);
+            
+            if (hasLaptop && hasDesk) {
+                return "This appears to be a workspace or office environment.";
+            }
+            if (hasCouch && hasTV) {
+                return "This looks like a living room or entertainment area.";
+            }
+            if (hasBed) {
+                return "This appears to be a bedroom setting.";
+            }
+            if (hasFood && counts['table']) {
+                return "This seems to be a dining area.";
+            }
+            
+            return "This is an indoor environment with everyday objects.";
+        }
+
+        // ========== OCR TEXT READING ==========
+        async function readText() {
+            if (!cameraActive) {
+                speak("Please start the camera first.");
+                return;
+            }
+
+            if (isProcessing) {
+                speak("Please wait, I'm still processing.");
+                return;
+            }
+
+            if (!tesseractWorker) {
+                speak("OCR is not ready yet. Please wait a moment and try again.");
+                return;
+            }
+
+            isProcessing = true;
+            showProcessing("Reading text from image...");
+
+            try {
+                const video = document.getElementById('videoElement');
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                
+                // Convert to grayscale for better OCR
+                ctx.drawImage(video, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                // Apply grayscale
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+                ctx.putImageData(imageData, 0, 0);
+                
+                const imageDataURL = canvas.toDataURL('image/jpeg', 0.9);
+
+                // Perform OCR
+                const { data: { text } } = await tesseractWorker.recognize(imageDataURL);
+
+                if (text.trim().length > 0) {
+                    const cleanedText = text.trim().replace(/\n+/g, '. ');
+                    const response = `I found text. It says: ${cleanedText}`;
+                    speak(response);
+                    addToHistory('OCR Text Reading', cleanedText);
+                } else {
+                    const noTextMsg = "I don't see any readable text in the current view. Try positioning the camera closer to the text or improving the lighting.";
+                    speak(noTextMsg);
+                    addToHistory('OCR Text Reading', noTextMsg);
+                }
+            } catch (error) {
+                console.error('OCR error:', error);
+                speak("I had trouble reading the text. Please try again with better lighting and clearer text.");
+            } finally {
+                isProcessing = false;
+                hideProcessing();
+            }
+        }
+
+        // ========== VOICE RECOGNITION ==========
+        function startListening() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                speak("Voice recognition is not supported. Please use Chrome or Edge.");
+                return;
+            }
+
+            if (isListening) return;
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('mainVoiceBtn').classList.add('listening');
+                document.getElementById('mainVoiceBtn').textContent = '🎤 Listening...';
+                document.getElementById('userSpeech').textContent = 'Listening...';
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById('userSpeech').textContent = transcript;
+                addToHistory('You', transcript);
+                handleVoiceCommand(transcript);
+            };
+
+            recognition.onerror = (event) => {
+                isListening = false;
+                document.getElementById('mainVoiceBtn').classList.remove('listening');
+                document.getElementById('mainVoiceBtn').textContent = '🎤 Hold to Speak';
+                
+                if (event.error === 'no-speech') {
+                    speak("I didn't hear anything. Please try again.");
+                } else if (event.error === 'not-allowed') {
+                    speak("Microphone access denied.");
+                }
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                document.getElementById('mainVoiceBtn').classList.remove('listening');
+                document.getElementById('mainVoiceBtn').textContent = '🎤 Hold to Speak';
+            };
+
+            recognition.start();
+        }
+
+        // ========== COMMAND HANDLER ==========
+        async function handleVoiceCommand(command) {
+            const cmd = command.toLowerCase();
+
+            if (cmd.includes('start') && (cmd.includes('camera') || cmd.includes('vision'))) {
+                if (!cameraActive) await startCamera();
+                else speak("Camera is already running.");
+                return;
+            }
+
+            if (cmd.includes('stop') && (cmd.includes('camera') || cmd.includes('vision'))) {
+                if (cameraActive) stopCamera();
+                else speak("Camera is not running.");
+                return;
+            }
+
+            if (!cameraActive) {
+                speak("Please start the camera first. Say 'start camera'.");
+                return;
+            }
+
+            // AI Scene Description commands
+            if (cmd.includes('describe') && (cmd.includes('scene') || cmd.includes('picture') || cmd.includes('image'))) {
+                await captureAndDescribe();
+            }
+            else if (cmd.includes('capture') && cmd.includes('describe')) {
+                await captureAndDescribe();
+            }
+            // OCR Text Reading commands
+            else if (cmd.includes('read') && (cmd.includes('text') || cmd.includes('writing'))) {
+                await readText();
+            }
+            else if (cmd.includes('read this') || cmd.includes('read that')) {
+                await readText();
+            }
+            else if (cmd.includes('what') && (cmd.includes('text') || cmd.includes('written') || cmd.includes('says'))) {
+                await readText();
+            }
+            // Distance query commands
+            else if (cmd.includes('how far')) {
+                const words = cmd.split(' ');
+                const objIndex = words.indexOf('far') + 1;
+                if (objIndex < words.length && words[objIndex] !== 'is') {
+                    const objName = words.slice(objIndex + (words[objIndex] === 'is' ? 2 : 0)).join(' ').replace(/[^a-z ]/g, '').trim();
+                    if (objName) {
+                        countObjects(objName);
+                    }
+                } else {
+                    describeScene('full');
+                }
+            }
+            // Existing commands
+            else if (cmd.includes('what') && (cmd.includes('see') || cmd.includes('front') || cmd.includes('there'))) {
+                describeScene('full');
+            }
+            else if (cmd.includes('how many')) {
+                if (cmd.includes('people') || cmd.includes('person')) {
+                    countObjects('person');
+                } else {
+                    const words = cmd.split(' ');
+                    const objIndex = words.indexOf('many') + 1;
+                    if (objIndex < words.length) {
+                        countObjects(words[objIndex].replace(/[^a-z]/g, ''));
+                    }
+                }
+            }
+            else if (cmd.includes('is there') || cmd.includes('can you see')) {
+                findSpecificObject(cmd);
+            }
+            else if (cmd.includes('help')) {
+                speak("I can detect objects with distance, describe scenes with AI, and read text. Try: What do you see? Describe the scene. Read the text. How many people? How far is the person?");
+            }
+            else {
+                describeScene('brief');
+            }
+        }
+
+        // ========== SCENE DESCRIPTION WITH DISTANCE ==========
+        function describeScene(detail = 'full') {
+            if (currentDetections.length === 0) {
+                speak("I don't see any clear objects. Try better lighting or positioning.");
+                return;
+            }
+
+            let description = '';
+            const counts = {};
+            const distances = {};
+            
+            currentDetections.forEach(d => {
+                counts[d.class] = (counts[d.class] || 0) + 1;
+                const dist = estimateDistance(d.bbox[2]);
+                if (dist && dist < 10) {
+                    distances[d.class] = Math.min(distances[d.class] || Infinity, dist);
+                }
+            });
+
+            const totalObjects = currentDetections.length;
+
+            if (detail === 'full') {
+                description = `I can see ${totalObjects} object${totalObjects > 1 ? 's' : ''}. `;
+
+                const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                entries.forEach(([obj, count]) => {
+                    if (count > 1) {
+                        description += `${count} ${obj}s`;
+                    } else {
+                        description += `one ${obj}`;
+                    }
+                    
+                    if (distances[obj]) {
+                        description += ` approximately ${distances[obj].toFixed(1)} meters away`;
+                    }
+                    description += ', ';
+                });
+
+                description = description.slice(0, -2) + '. ';
+            } else {
+                const mainObjects = Object.entries(counts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([obj, count]) => {
+                        let item = count > 1 ? `${count} ${obj}s` : `a ${obj}`;
+                        if (distances[obj]) {
+                            item += ` about ${distances[obj].toFixed(1)} meters away`;
+                        }
+                        return item;
+                    })
+                    .join(', ');
+                description = `I see ${mainObjects}.`;
+            }
+
+            speak(description);
+            addToHistory('AI', description);
+        }
+
+        function describeNow() {
+            describeScene('full');
+        }
+
+        function countObjects(objectType) {
+            const matches = currentDetections.filter(d => 
+                d.class.toLowerCase().includes(objectType.toLowerCase())
+            );
+            
+            const count = matches.length;
+
+            let response;
+            if (count === 0) {
+                response = `I don't see any ${objectType}.`;
+            } else if (count === 1) {
+                const dist = estimateDistance(matches[0].bbox[2]);
+                response = `I see one ${objectType}`;
+                if (dist && dist < 10) {
+                    response += ` approximately ${dist.toFixed(1)} meters away`;
+                }
+                response += '.';
+            } else {
+                const distances = matches
+                    .map(m => estimateDistance(m.bbox[2]))
+                    .filter(d => d && d < 10);
+                
+                response = `I see ${count} ${objectType}s`;
+                if (distances.length > 0) {
+                    const avgDist = distances.reduce((a, b) => a + b, 0) / distances.length;
+                    response += ` at an average distance of ${avgDist.toFixed(1)} meters`;
+                }
+                response += '.';
+            }
+
+            speak(response);
+            addToHistory('AI', response);
+        }
+
+        function findSpecificObject(command) {
+            const words = command.toLowerCase().split(' ');
+            let objectName = '';
+            
+            if (command.includes('is there')) {
+                const idx = words.indexOf('there') + 1;
+                objectName = words.slice(idx).join(' ').replace(/[^a-z ]/g, '').trim();
+            }
+
+            const found = currentDetections.filter(d => 
+                d.class.toLowerCase().includes(objectName) ||
+                objectName.includes(d.class.toLowerCase())
+            );
+
+            let response;
+            if (found.length === 0) {
+                response = `No, I don't see any ${objectName}.`;
+            } else if (found.length === 1) {
+                const dist = estimateDistance(found[0].bbox[2]);
+                response = `Yes! I see a ${found[0].class}`;
+                if (dist && dist < 10) {
+                    response += ` about ${dist.toFixed(1)} meters away`;
+                }
+                response += '.';
+            } else {
+                const distances = found
+                    .map(f => estimateDistance(f.bbox[2]))
+                    .filter(d => d && d < 10);
+                
+                response = `Yes! I see ${found.length} of them`;
+                if (distances.length > 0) {
+                    const closest = Math.min(...distances);
+                    response += `, the closest one is ${closest.toFixed(1)} meters away`;
+                }
+                response += '.';
+            }
+
+            speak(response);
+            addToHistory('AI', response);
+        }
+
+        // ========== UI HELPERS ==========
+        function showProcessing(message) {
+            document.getElementById('processingOverlay').classList.remove('hidden');
+            document.getElementById('processingText').textContent = message;
+            document.getElementById('captureBtn').classList.add('processing');
+            document.getElementById('ocrBtn').classList.add('processing');
+            document.getElementById('describeBtn').classList.add('processing');
+        }
+
+        function hideProcessing() {
+            document.getElementById('processingOverlay').classList.add('hidden');
+            document.getElementById('captureBtn').classList.remove('processing');
+            document.getElementById('ocrBtn').classList.remove('processing');
+            document.getElementById('describeBtn').classList.remove('processing');
+        }
+
+        // ========== TEXT TO SPEECH ==========
+        function speak(text) {
+            return new Promise((resolve) => {
+                if (!('speechSynthesis' in window)) {
+                    document.getElementById('aiResponse').textContent = text;
+                    resolve();
+                    return;
+                }
+
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 0.9;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+                utterance.lang = 'en-US';
+
+                utterance.onstart = () => {
+                    isSpeaking = true;
+                    document.getElementById('speakingTag').classList.remove('hidden');
+                    document.getElementById('aiResponse').textContent = text;
+                };
+
+                utterance.onend = () => {
+                    isSpeaking = false;
+                    document.getElementById('speakingTag').classList.add('hidden');
+                    resolve();
+                };
+
+                utterance.onerror = () => {
+                    isSpeaking = false;
+                    document.getElementById('speakingTag').classList.add('hidden');
+                    document.getElementById('aiResponse').textContent = text;
+                    resolve();
+                };
+
+                window.speechSynthesis.speak(utterance);
+            });
+        }
+
+        // ========== UTILITY FUNCTIONS ==========
+        function updateStatus(elementId, color, text) {
+            const statusDot = document.getElementById(elementId);
+            const statusText = document.getElementById(elementId + 'Text');
+            
+            statusDot.className = `w-3 h-3 rounded-full bg-${color}-500`;
+            if (statusText) {
+                const parts = text.split(': ');
+                statusText.textContent = parts[1] || parts[0];
+            }
+        }
+
+        function addToHistory(speaker, message) {
+            const history = document.getElementById('historyDisplay');
+            
+            if (history.children.length === 1 && history.children[0].textContent.includes('conversation will appear')) {
+                history.innerHTML = '';
+            }
+
+            const entry = document.createElement('div');
+            entry.className = speaker === 'You' ? 
+                'bg-blue-900 bg-opacity-40 rounded-lg p-3' : 
+                speaker === 'AI Scene Description' ? 
+                'bg-purple-900 bg-opacity-40 rounded-lg p-3' :
+                speaker === 'OCR Text Reading' ?
+                'bg-orange-900 bg-opacity-40 rounded-lg p-3' :
+                'bg-purple-900 bg-opacity-40 rounded-lg p-3';
+            
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-white font-semibold">${speaker}</span>
+                    <span class="text-xs text-gray-400">${time}</span>
+                </div>
+                <p class="text-gray-200">${message}</p>
+            `;
+            
+            history.appendChild(entry);
+            history.scrollTop = history.scrollHeight;
+        }
+
+        function getEmoji(label) {
+            const emojiMap = {
+                'person': '👤', 'chair': '🪑', 'table': '🪑', 'bottle': '🍾',
+                'cup': '☕', 'fork': '🍴', 'knife': '🔪', 'spoon': '🥄',
+                'bowl': '🥣', 'banana': '🍌', 'apple': '🍎', 'orange': '🍊',
+                'car': '🚗', 'truck': '🚚', 'bus': '🚌', 'bicycle': '🚲',
+                'motorcycle': '🏍️', 'book': '📖', 'clock': '🕐', 'laptop': '💻',
+                'mouse': '🖱️', 'keyboard': '⌨️', 'cell phone': '📱', 'tv': '📺',
+                'couch': '🛋️', 'bed': '🛏️', 'dog': '🐕', 'cat': '🐈',
+                'bird': '🐦', 'backpack': '🎒', 'umbrella': '☂️', 'handbag': '👜',
+            };
+            return emojiMap[label] || '📦';
+        }
+
+        // ========== CLEANUP ==========
+        window.onbeforeunload = async () => {
+            stopCamera();
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            if (tesseractWorker) await tesseractWorker.terminate();
+        };
+    </script>
+</body>
+</html>
