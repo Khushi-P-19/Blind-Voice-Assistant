@@ -2,7 +2,6 @@
 
 A browser-based accessibility tool that combines real-time object detection, AI-powered scene description, OCR text reading, and voice interaction — designed to help visually impaired users understand their surroundings.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![HTML](https://img.shields.io/badge/built%20with-HTML%2FJS-orange.svg)
 ![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-blue.svg)
 ![TensorFlow](https://img.shields.io/badge/ML-TensorFlow.js-FF6F00.svg)
@@ -155,6 +154,3 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 
 ---
 
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
